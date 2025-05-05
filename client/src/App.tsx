@@ -24,8 +24,27 @@ function App() {
     const script = document.createElement('script');
     script.src = "https://auth.util.repl.co/script.js";
     script.setAttribute('data-client-id', 'flashcards-app');
-    script.setAttribute('authed', 'location.reload()');
+    script.setAttribute('authed', `
+      const authToken = localStorage.getItem('authToken');
+      if (!authToken) {
+        location.reload();
+      }
+    `);
     document.body.appendChild(script);
+
+    // Add auth token to all API requests
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      queryClient.setDefaultOptions({
+        queries: {
+          retry: false,
+          refetchOnWindowFocus: false,
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      });
+    }
   }, []);
 
   return (

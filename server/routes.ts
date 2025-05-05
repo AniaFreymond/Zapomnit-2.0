@@ -6,6 +6,21 @@ import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const apiPrefix = '/api';
+  
+  // Auth middleware
+  app.use(`${apiPrefix}/*`, (req: any, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'No authorization header' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    // Repl Auth adds user data to the request
+    req.user = { id: req.headers['x-replit-user-id'] };
+    next();
+  });
 
   // Get all flashcards for the authenticated user
   app.get(`${apiPrefix}/flashcards`, async (req: any, res) => {
