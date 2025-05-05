@@ -6,11 +6,11 @@ import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const apiPrefix = '/api';
-  
-  // Get all flashcards
-  app.get(`${apiPrefix}/flashcards`, async (req, res) => {
+
+  // Get all flashcards for the authenticated user
+  app.get(`${apiPrefix}/flashcards`, async (req: any, res) => {
     try {
-      const flashcards = await storage.getAllFlashcards();
+      const flashcards = await storage.getAllFlashcards(req.user.id);
       return res.status(200).json(flashcards);
     } catch (error) {
       console.error('Error getting flashcards:', error);
@@ -18,8 +18,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Search flashcards
-  app.get(`${apiPrefix}/flashcards/search`, async (req, res) => {
+  // Search flashcards for the authenticated user
+  app.get(`${apiPrefix}/flashcards/search`, async (req: any, res) => {
     try {
       const query = req.query.q as string || '';
       const tagIds = req.query.tags ? 
@@ -28,7 +28,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : [parseInt(req.query.tags as string, 10)]) 
         : undefined;
 
-      const flashcards = await storage.searchFlashcards(query, tagIds);
+      const flashcards = await storage.searchFlashcards(query, tagIds, req.user.id);
       return res.status(200).json(flashcards);
     } catch (error) {
       console.error('Error searching flashcards:', error);
@@ -36,16 +36,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get a specific flashcard
-  app.get(`${apiPrefix}/flashcards/:id`, async (req, res) => {
+  // Get a specific flashcard for the authenticated user
+  app.get(`${apiPrefix}/flashcards/:id`, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const flashcard = await storage.getFlashcardById(id);
-      
+      const flashcard = await storage.getFlashcardById(id, req.user.id);
+
       if (!flashcard) {
         return res.status(404).json({ error: 'Flashcard not found' });
       }
-      
+
       return res.status(200).json(flashcard);
     } catch (error) {
       console.error(`Error getting flashcard ${req.params.id}:`, error);
@@ -53,18 +53,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create a new flashcard
-  app.post(`${apiPrefix}/flashcards`, async (req, res) => {
+  // Create a new flashcard for the authenticated user
+  app.post(`${apiPrefix}/flashcards`, async (req: any, res) => {
     try {
       // Validate the flashcard data
       const validatedData = flashcardInsertSchema.parse(req.body);
-      
+
       // Get tag IDs from request
       const tagIds = req.body.tagIds || [];
-      
+
       // Create the flashcard with associated tags
-      const newFlashcard = await storage.createFlashcard(validatedData, tagIds);
-      
+      const newFlashcard = await storage.createFlashcard(validatedData, tagIds, req.user.id);
+
       return res.status(201).json(newFlashcard);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -75,24 +75,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update a flashcard
-  app.put(`${apiPrefix}/flashcards/:id`, async (req, res) => {
+  // Update a flashcard for the authenticated user
+  app.put(`${apiPrefix}/flashcards/:id`, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      
+
       // Validate the flashcard data
       const validatedData = flashcardInsertSchema.partial().parse(req.body);
-      
+
       // Get tag IDs from request
       const tagIds = req.body.tagIds;
-      
+
       // Update the flashcard
-      const updatedFlashcard = await storage.updateFlashcard(id, validatedData, tagIds);
-      
+      const updatedFlashcard = await storage.updateFlashcard(id, validatedData, tagIds, req.user.id);
+
       if (!updatedFlashcard) {
         return res.status(404).json({ error: 'Flashcard not found' });
       }
-      
+
       return res.status(200).json(updatedFlashcard);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -103,16 +103,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Delete a flashcard
-  app.delete(`${apiPrefix}/flashcards/:id`, async (req, res) => {
+  // Delete a flashcard for the authenticated user
+  app.delete(`${apiPrefix}/flashcards/:id`, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const deletedFlashcard = await storage.deleteFlashcard(id);
-      
+      const deletedFlashcard = await storage.deleteFlashcard(id, req.user.id);
+
       if (!deletedFlashcard) {
         return res.status(404).json({ error: 'Flashcard not found' });
       }
-      
+
       return res.status(200).json(deletedFlashcard);
     } catch (error) {
       console.error(`Error deleting flashcard ${req.params.id}:`, error);
@@ -120,10 +120,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Delete all flashcards
-  app.delete(`${apiPrefix}/flashcards`, async (req, res) => {
+  // Delete all flashcards for the authenticated user
+  app.delete(`${apiPrefix}/flashcards`, async (req: any, res) => {
     try {
-      const deletedFlashcards = await storage.deleteAllFlashcards();
+      const deletedFlashcards = await storage.deleteAllFlashcards(req.user.id);
       return res.status(200).json({ 
         message: `Deleted ${deletedFlashcards.length} flashcards successfully`,
         count: deletedFlashcards.length
@@ -134,10 +134,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all tags
-  app.get(`${apiPrefix}/tags`, async (req, res) => {
+  // Get all tags for the authenticated user
+  app.get(`${apiPrefix}/tags`, async (req: any, res) => {
     try {
-      const tags = await storage.getAllTags();
+      const tags = await storage.getAllTags(req.user.id);
       return res.status(200).json(tags);
     } catch (error) {
       console.error('Error getting tags:', error);
@@ -145,15 +145,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create a new tag
-  app.post(`${apiPrefix}/tags`, async (req, res) => {
+  // Create a new tag for the authenticated user
+  app.post(`${apiPrefix}/tags`, async (req: any, res) => {
     try {
       // Validate the tag data
       const validatedData = tagInsertSchema.parse(req.body);
-      
+
       // Create the tag
-      const newTag = await storage.createTag(validatedData);
-      
+      const newTag = await storage.createTag(validatedData, req.user.id);
+
       return res.status(201).json(newTag);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -164,21 +164,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update a tag
-  app.put(`${apiPrefix}/tags/:id`, async (req, res) => {
+  // Update a tag for the authenticated user
+  app.put(`${apiPrefix}/tags/:id`, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      
+
       // Validate the tag data
       const validatedData = tagInsertSchema.partial().parse(req.body);
-      
+
       // Update the tag
-      const updatedTag = await storage.updateTag(id, validatedData);
-      
+      const updatedTag = await storage.updateTag(id, validatedData, req.user.id);
+
       if (!updatedTag) {
         return res.status(404).json({ error: 'Tag not found' });
       }
-      
+
       return res.status(200).json(updatedTag);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -189,16 +189,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Delete a tag
-  app.delete(`${apiPrefix}/tags/:id`, async (req, res) => {
+  // Delete a tag for the authenticated user
+  app.delete(`${apiPrefix}/tags/:id`, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const deletedTag = await storage.deleteTag(id);
-      
+      const deletedTag = await storage.deleteTag(id, req.user.id);
+
       if (!deletedTag) {
         return res.status(404).json({ error: 'Tag not found' });
       }
-      
+
       return res.status(200).json(deletedTag);
     } catch (error) {
       console.error(`Error deleting tag ${req.params.id}:`, error);

@@ -1,4 +1,3 @@
-
 import { supabase } from "../db";
 import { FlashcardInsert, TagInsert, FlashcardWithTags } from "@shared/schema";
 
@@ -158,11 +157,11 @@ export const storage = {
   },
 
   // Tag operations
-  async getAllTags() {
+  async getAllTags(userId: string) {
     const { data, error } = await supabase
-      .from('tags')
-      .select('*');
-
+      .from("tags")
+      .select("*")
+      .eq('user_id', userId);
     if (error) throw error;
     return data;
   },

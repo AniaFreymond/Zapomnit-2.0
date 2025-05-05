@@ -20,6 +20,14 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = "https://auth.util.repl.co/script.js";
+    script.setAttribute('data-client-id', 'flashcards-app');
+    script.setAttribute('authed', 'location.reload()');
+    document.body.appendChild(script);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
