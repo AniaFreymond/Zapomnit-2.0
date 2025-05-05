@@ -1,208 +1,215 @@
+
 import { supabase } from "../db";
-import { flashcards, tags, flashcardTags, FlashcardInsert, TagInsert, FlashcardTagInsert, Tag, Flashcard } from "@shared/schema";
-import { eq, and, ilike, desc, inArray } from "drizzle-orm";
+import { FlashcardInsert, TagInsert, FlashcardWithTags } from "@shared/schema";
 
 export const storage = {
   // Flashcard operations
   async getAllFlashcards() {
-    const result = await db.query.flashcards.findMany({
-      orderBy: desc(flashcards.created_at),
-      with: {
-        tags: {
-          with: {
-            tag: true
-          }
-        }
-      }
-    });
+    const { data: flashcards, error } = await supabase
+      .from('flashcards')
+      .select(`
+        *,
+        tags: flashcard_tags (
+          tag: tags (*)
+        )
+      `)
+      .order('created_at', { ascending: false });
 
-    // Transform the data to flatten the tag structure
-    return result.map(card => ({
+    if (error) throw error;
+    return flashcards.map(card => ({
       ...card,
-      tags: card.tags.map(tag => tag.tag)
+      tags: card.tags.map((t: any) => t.tag)
     }));
   },
 
   async getFlashcardById(id: number) {
-    const result = await db.query.flashcards.findFirst({
-      where: eq(flashcards.id, id),
-      with: {
-        tags: {
-          with: {
-            tag: true
-          }
-        }
-      }
-    });
+    const { data, error } = await supabase
+      .from('flashcards')
+      .select(`
+        *,
+        tags: flashcard_tags (
+          tag: tags (*)
+        )
+      `)
+      .eq('id', id)
+      .single();
 
-    if (!result) return null;
+    if (error) throw error;
+    if (!data) return null;
 
-    // Transform the data to flatten the tag structure
     return {
-      ...result,
-      tags: result.tags.map(tag => tag.tag)
+      ...data,
+      tags: data.tags.map((t: any) => t.tag)
     };
   },
 
   async searchFlashcards(query: string, tagIds?: number[]) {
-    let cards;
+    let supabaseQuery = supabase
+      .from('flashcards')
+      .select(`
+        *,
+        tags: flashcard_tags (
+          tag: tags (*)
+        )
+      `);
 
-    if (tagIds && tagIds.length > 0) {
-      // Find flashcards with any of the specified tags and matching search term
-      const flashcardIdsWithTags = await db
-        .select({ id: flashcardTags.flashcard_id })
-        .from(flashcardTags)
-        .where(inArray(flashcardTags.tag_id, tagIds));
-      
-      const flashcardIds = flashcardIdsWithTags.map(item => item.id);
-      
-      if (flashcardIds.length === 0) {
-        return [];
-      }
-
-      cards = await db.query.flashcards.findMany({
-        where: and(
-          inArray(flashcards.id, flashcardIds),
-          query ? 
-            and(
-              ilike(flashcards.front, `%${query}%`),
-              ilike(flashcards.back, `%${query}%`)
-            ) : undefined
-        ),
-        orderBy: desc(flashcards.created_at),
-        with: {
-          tags: {
-            with: {
-              tag: true
-            }
-          }
-        }
-      });
-    } else {
-      // Search only by query
-      cards = await db.query.flashcards.findMany({
-        where: query ? 
-          or(
-            ilike(flashcards.front, `%${query}%`),
-            ilike(flashcards.back, `%${query}%`)
-          ) : undefined,
-        orderBy: desc(flashcards.created_at),
-        with: {
-          tags: {
-            with: {
-              tag: true
-            }
-          }
-        }
-      });
+    if (query) {
+      supabaseQuery = supabaseQuery.or(`front.ilike.%${query}%,back.ilike.%${query}%`);
     }
 
-    // Transform the data to flatten the tag structure
+    if (tagIds && tagIds.length > 0) {
+      const { data: flashcardIds } = await supabase
+        .from('flashcard_tags')
+        .select('flashcard_id')
+        .in('tag_id', tagIds);
+
+      if (flashcardIds && flashcardIds.length > 0) {
+        supabaseQuery = supabaseQuery.in('id', flashcardIds.map(f => f.flashcard_id));
+      }
+    }
+
+    const { data: cards, error } = await supabaseQuery.order('created_at', { ascending: false });
+
+    if (error) throw error;
     return cards.map(card => ({
       ...card,
-      tags: card.tags.map(tag => tag.tag)
+      tags: card.tags.map((t: any) => t.tag)
     }));
   },
 
   async createFlashcard(data: FlashcardInsert, tagIds: number[] = []) {
-    const [newCard] = await db.insert(flashcards).values(data).returning();
+    const { data: newCard, error } = await supabase
+      .from('flashcards')
+      .insert(data)
+      .select()
+      .single();
 
-    // If there are tags, associate them with the flashcard
+    if (error) throw error;
+
     if (tagIds.length > 0) {
       const tagRelations = tagIds.map(tagId => ({
         flashcard_id: newCard.id,
         tag_id: tagId
       }));
 
-      await db.insert(flashcardTags).values(tagRelations);
+      const { error: tagError } = await supabase
+        .from('flashcard_tags')
+        .insert(tagRelations);
+
+      if (tagError) throw tagError;
     }
 
-    // Get the complete flashcard with tags
     return this.getFlashcardById(newCard.id);
   },
 
   async updateFlashcard(id: number, data: Partial<FlashcardInsert>, tagIds?: number[]) {
-    // Update flashcard data
-    const [updatedCard] = await db
-      .update(flashcards)
-      .set({ ...data, updated_at: new Date() })
-      .where(eq(flashcards.id, id))
-      .returning();
+    const { error } = await supabase
+      .from('flashcards')
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq('id', id);
 
-    // If tag IDs were provided, update the card's tags
+    if (error) throw error;
+
     if (tagIds !== undefined) {
-      // Delete existing tag associations
-      await db
-        .delete(flashcardTags)
-        .where(eq(flashcardTags.flashcard_id, id));
+      const { error: deleteError } = await supabase
+        .from('flashcard_tags')
+        .delete()
+        .eq('flashcard_id', id);
 
-      // Create new tag associations
+      if (deleteError) throw deleteError;
+
       if (tagIds.length > 0) {
         const tagRelations = tagIds.map(tagId => ({
           flashcard_id: id,
           tag_id: tagId
         }));
 
-        await db.insert(flashcardTags).values(tagRelations);
+        const { error: insertError } = await supabase
+          .from('flashcard_tags')
+          .insert(tagRelations);
+
+        if (insertError) throw insertError;
       }
     }
 
-    // Get the complete updated flashcard with tags
     return this.getFlashcardById(id);
   },
 
   async deleteFlashcard(id: number) {
-    // Delete the flashcard (cascade will delete tag associations)
-    const [deletedCard] = await db.delete(flashcards).where(eq(flashcards.id, id)).returning();
-    return deletedCard;
+    const { data, error } = await supabase
+      .from('flashcards')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
   async deleteAllFlashcards() {
-    // Delete all flashcards (cascade will delete all tag associations)
-    return await db.delete(flashcards).returning();
+    const { data, error } = await supabase
+      .from('flashcards')
+      .delete()
+      .select();
+
+    if (error) throw error;
+    return data;
   },
 
   // Tag operations
   async getAllTags() {
-    return await db.query.tags.findMany();
+    const { data, error } = await supabase
+      .from('tags')
+      .select('*');
+
+    if (error) throw error;
+    return data;
   },
 
   async getTagById(id: number) {
-    return await db.query.tags.findFirst({
-      where: eq(tags.id, id)
-    });
+    const { data, error } = await supabase
+      .from('tags')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
   async createTag(data: TagInsert) {
-    const [newTag] = await db.insert(tags).values(data).returning();
+    const { data: newTag, error } = await supabase
+      .from('tags')
+      .insert(data)
+      .select()
+      .single();
+
+    if (error) throw error;
     return newTag;
   },
 
   async updateTag(id: number, data: Partial<TagInsert>) {
-    const [updatedTag] = await db
-      .update(tags)
-      .set(data)
-      .where(eq(tags.id, id))
-      .returning();
+    const { data: updatedTag, error } = await supabase
+      .from('tags')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
     return updatedTag;
   },
 
   async deleteTag(id: number) {
-    const [deletedTag] = await db.delete(tags).where(eq(tags.id, id)).returning();
-    return deletedTag;
+    const { data, error } = await supabase
+      .from('tags')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 };
-
-// Helper function for SQL OR operation
-function or(...conditions: any[]) {
-  if (conditions.length === 0) return undefined;
-  if (conditions.length === 1) return conditions[0];
-  
-  let result = conditions[0];
-  for (let i = 1; i < conditions.length; i++) {
-    if (conditions[i]) {
-      result = result || conditions[i];
-    }
-  }
-  return result;
-}
