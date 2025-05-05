@@ -1,4 +1,4 @@
-import { db } from "@db";
+import { supabase } from "../db";
 import { flashcards, tags, flashcardTags, FlashcardInsert, TagInsert, FlashcardTagInsert, Tag, Flashcard } from "@shared/schema";
 import { eq, and, ilike, desc, inArray } from "drizzle-orm";
 
